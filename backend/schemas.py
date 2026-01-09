@@ -17,6 +17,25 @@ class HealthResponse(BaseModel):
     temperature: float = Field(..., description="Input temperature")
 
 
+class AnomalyRequest(BaseModel):
+    """Request model for anomaly detection (5 features)"""
+    heart_rate: float = Field(..., description="Heart rate in beats per minute", ge=0, le=300)
+    respiratory_rate: float = Field(..., description="Respiratory rate in breaths per minute", ge=0, le=100)
+    spo2: float = Field(..., description="Blood oxygen saturation percentage", ge=0, le=100)
+    temperature: float = Field(..., description="Body temperature in Fahrenheit", ge=80, le=120)
+    glucose: float = Field(..., description="Blood glucose mg/dL", ge=0, le=1000)
+
+
+class AnomalyResponse(BaseModel):
+    """Response model for anomaly detection"""
+    anomaly_score: float
+    anomaly_detected: bool
+    risk_level: Literal["NORMAL", "MODERATE", "HIGH", "CRITICAL"]
+    isolation_forest_score: float
+    isolation_forest_prediction: int
+    scaled_features: list[float]
+
+
 class HealthCheckResponse(BaseModel):
     """Response model for health check endpoint"""
     status: str = Field(..., description="API status")

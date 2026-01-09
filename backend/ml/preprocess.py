@@ -6,20 +6,21 @@ import os
 from typing import Dict, Any, Tuple
 
 class DataPreprocessor:
-    def __init__(self, scaler_path: str = "/content/backend/artifacts/scaler.pkl"):
+    def __init__(self, scaler_path: str = None):
+        if scaler_path is None:
+            scaler_path = os.path.join(os.path.dirname(__file__), "artifacts", "scaler.pkl")
         self.scaler_path = scaler_path
         self.scaler = None
         self.feature_columns = ['heart_rate', 'respiratory_rate', 'spo2', 'temperature', 'glucose']
         
     def load_scaler(self):
-        """Load the trained scaler from file"""
+        """Load the trained scaler from file or create a default one if missing"""
         if os.path.exists(self.scaler_path):
             with open(self.scaler_path, 'rb') as f:
                 self.scaler = pickle.load(f)
         else:
-            # Create and fit a new scaler with default normal ranges
+            # Create a default scaler using sane normal ranges
             self.scaler = StandardScaler()
-            # Default normal ranges for training the scaler
             normal_data = pd.DataFrame({
                 'heart_rate': np.random.normal(75, 10, 1000),
                 'respiratory_rate': np.random.normal(16, 3, 1000),
@@ -29,6 +30,29 @@ class DataPreprocessor:
             })
             self.scaler.fit(normal_data)
             self.save_scaler()
+
+    def fit_scaler(self, X):
+        """Fit the scaler on provided data (numpy array or DataFrame) and save it"""
+        if isinstance(X, pd.DataFrame):
+            df = X
+        else:
+            df = pd.DataFrame(X, columns=self.feature_columns)
+
+        self.scaler = StandardScaler()
+        self.scaler.fit(df[self.feature_columns])
+        self.save_scaler()
+
+    def transform_array(self, X):
+        """Transform an array or DataFrame using the stored scaler"""
+        if self.scaler is None:
+            self.load_scaler()
+
+        if isinstance(X, pd.DataFrame):
+            df = X
+        else:
+            df = pd.DataFrame(X, columns=self.feature_columns)
+
+        return self.scaler.transform(df[self.feature_columns])
     
     def save_scaler(self):
         """Save the scaler to file"""
