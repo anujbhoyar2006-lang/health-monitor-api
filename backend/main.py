@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from schemas import HealthRequest, HealthResponse, HealthCheckResponse
+import os
 
 app = FastAPI(
     title="Health Monitoring API",
@@ -37,4 +38,17 @@ async def predict_risk(health_data: HealthRequest):
             status_code=500,
             detail=f"Error processing health data: {str(e)}"
         )
+
+
+# 🚀 REQUIRED FOR RAILWAY
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=port,
+        reload=False
+    )
 
