@@ -3,6 +3,7 @@ from backend.schemas import HealthRequest, HealthResponse, HealthCheckResponse, 
 from backend.ml.models import AnomalyDetector
 import numpy as np
 import os
+import asyncio
 
 app = FastAPI(
     title="Health Monitoring API",
@@ -67,6 +68,21 @@ async def detect_anomaly(vitals: AnomalyRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing anomaly detection: {str(e)}")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Non-blocking model warm-up on startup (runs in threadpool). If artifacts are missing, this will train and save them."""
+    loop = asyncio.get_event_loop()
+    # run load_models in a thread to avoid blocking uvicorn startup
+    loop.run_in_executor(None, detector.load_models)
+
+
+@app.get("/ready")
+async def readiness():
+    """Return readiness including whether model artifacts are loaded."""
+    model_loaded = detector.model is not None
+    return {"status": "ok", "model_loaded": model_loaded}
 
 
 # 🚀 REQUIRED FOR RAILWAY
