@@ -17,7 +17,18 @@ if __name__ == "__main__":
     logging.info("Starting uvicorn programmatically on port %s", port)
     logging.debug("CWD: %s", os.getcwd())
     try:
-        uvicorn.run("backend.main:app", host="0.0.0.0", port=port, reload=False)
+        # Import the app module directly to ensure import uses our modified sys.path
+        try:
+            import backend.main as main_mod
+            app_obj = main_mod.app
+            logging.info("Imported backend.main successfully.")
+        except Exception:
+            logging.exception("Failed to import backend.main. Directory listing and sys.path below for diagnostics:")
+            logging.error("ROOT listing: %s", os.listdir(ROOT))
+            logging.error("sys.path: %s", sys.path[:5])
+            raise
+
+        uvicorn.run(app_obj, host="0.0.0.0", port=port, reload=False)
     except Exception:
         logging.exception("Failed to start the server")
         raise
