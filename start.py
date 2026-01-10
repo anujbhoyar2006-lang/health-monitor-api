@@ -15,6 +15,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
     port = int(os.environ.get("PORT", 8000))
     logging.info("Starting uvicorn programmatically on port %s", port)
+    logging.info("ROOT listing: %s", os.listdir(ROOT))
+    logging.info("backend exists: %s", os.path.isdir(os.path.join(ROOT, "backend")))
     logging.debug("CWD: %s", os.getcwd())
     try:
         # Import the app module directly to ensure import uses our modified sys.path
