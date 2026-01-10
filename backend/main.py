@@ -1,6 +1,17 @@
 from fastapi import FastAPI, HTTPException
-from backend.schemas import HealthRequest, HealthResponse, HealthCheckResponse, AnomalyRequest, AnomalyResponse
-from backend.ml.models import AnomalyDetector
+# Import schemas and model module robustly to handle different import contexts in production
+try:
+    from backend.schemas import HealthRequest, HealthResponse, HealthCheckResponse, AnomalyRequest, AnomalyResponse
+    from backend.ml.models import AnomalyDetector
+except Exception:
+    import sys, os
+    # Add this file's directory (backend) to sys.path so sibling imports work when module is executed as top-level
+    backend_dir = os.path.dirname(__file__)
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
+    from schemas import HealthRequest, HealthResponse, HealthCheckResponse, AnomalyRequest, AnomalyResponse
+    from ml.models import AnomalyDetector
+
 import numpy as np
 import os
 import asyncio
