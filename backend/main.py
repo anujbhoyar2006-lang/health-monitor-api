@@ -4,12 +4,16 @@ from backend.ml.models import AnomalyDetector
 import numpy as np
 import os
 import asyncio
+import logging
 
 app = FastAPI(
     title="Health Monitoring API",
     description="Simple health risk assessment based on vital signs",
     version="1.0.0"
 )
+
+# configure basic logging (can control via LOG_LEVEL env var)
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
 # ML detector (lazy-loaded)
 detector = AnomalyDetector(artifacts_path=os.path.join(os.path.dirname(__file__), "ml", "artifacts"))
@@ -72,10 +76,22 @@ async def detect_anomaly(vitals: AnomalyRequest):
 
 @app.on_event("startup")
 async def startup_event():
-    """Non-blocking model warm-up on startup (runs in threadpool). If artifacts are missing, this will train and save them."""
-    loop = asyncio.get_event_loop()
-    # run load_models in a thread to avoid blocking uvicorn startup
-    loop.run_in_executor(None, detector.load_models)
+    """Non-blocking model warm-up on startup (runs in threadpool).
+
+    This respects MODEL_WARMUP env var. Failures during loading/training are logged and do not crash the process.
+    """
+    def _safe_load():
+        try:
+            detector.load_models()
+        except Exception:
+            logging.exception("Model warm-up failed during startup; continuing without model.")
+
+    model_warmup = os.environ.get("MODEL_WARMUP", "true").lower() in ("1", "true", "yes")
+    if model_warmup:
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(None, _safe_load)
+    else:
+        logging.info("MODEL_WARMUP disabled; skipping model warm-up on startup.")
 
 
 @app.get("/ready")

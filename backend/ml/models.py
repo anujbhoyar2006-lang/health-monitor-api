@@ -3,9 +3,12 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 import pickle
 import os
+import logging
 from typing import Dict, Any, List, Union
 
 from backend.ml.preprocess import DataPreprocessor
+
+logger = logging.getLogger(__name__) 
 
 
 class AnomalyDetector:
@@ -17,27 +20,31 @@ class AnomalyDetector:
         os.makedirs(self.artifacts_path, exist_ok=True)
 
     def train_model(self, normal_data: Union[np.ndarray, pd.DataFrame] = None, n_samples: int = 5000):
-        if normal_data is None:
-            normal_data = self._generate_normal_data(n_samples=n_samples)
+        try:
+            if normal_data is None:
+                normal_data = self._generate_normal_data(n_samples=n_samples)
 
-        # ensure dataframe and correct columns
-        if isinstance(normal_data, np.ndarray):
-            df = pd.DataFrame(normal_data, columns=["heart_rate", "respiratory_rate", "spo2", "temperature", "glucose"])
-        else:
-            df = normal_data
+            # ensure dataframe and correct columns
+            if isinstance(normal_data, np.ndarray):
+                df = pd.DataFrame(normal_data, columns=["heart_rate", "respiratory_rate", "spo2", "temperature", "glucose"])
+            else:
+                df = normal_data
 
-        # Fit scaler (preprocessor) on clean normal data
-        self.preprocessor.fit_scaler(df)
-        scaled_data = self.preprocessor.transform_array(df)
+            # Fit scaler (preprocessor) on clean normal data
+            self.preprocessor.fit_scaler(df)
+            scaled_data = self.preprocessor.transform_array(df)
 
-        self.model = IsolationForest(
-            n_estimators=100,
-            contamination=0.1,
-            random_state=42
-        )
-        self.model.fit(scaled_data)
+            self.model = IsolationForest(
+                n_estimators=100,
+                contamination=0.1,
+                random_state=42
+            )
+            self.model.fit(scaled_data)
 
-        self.save_models()
+            self.save_models()
+            logger.info("Training completed and artifacts saved to %s", self.artifacts_path)
+        except Exception:
+            logger.exception("Training failed.")
 
     def _generate_normal_data(self, n_samples: int = 5000) -> np.ndarray:
         np.random.seed(42)
@@ -70,15 +77,35 @@ class AnomalyDetector:
     def load_models(self):
         model_path = os.path.join(self.artifacts_path, "isolation_forest.pkl")
 
-        if not os.path.exists(model_path):
-            self.train_model()
+        try:
+            if not os.path.exists(model_path):
+                # Controlled auto-training on startup via env var
+                auto_train = os.environ.get("MODEL_WARMUP", "true").lower() in ("1", "true", "yes")
+                if not auto_train:
+                    logger.warning("Model artifact missing and MODEL_WARMUP is disabled. Skipping training.")
+                    return
+
+                startup_samples = int(os.environ.get("STARTUP_N_SAMPLES", "500"))
+                logger.info("Model artifact missing. Auto-training with %s samples (startup scale).", startup_samples)
+                try:
+                    # Use reduced samples for startup to avoid resource exhaustion
+                    self.train_model(n_samples=startup_samples)
+                except Exception:
+                    logger.exception("Auto-training failed during startup; leaving model unloaded.")
+                    return
+            else:
+                with open(model_path, "rb") as f:
+                    self.model = pickle.load(f)
+
+            # ensure scaler is loaded; handle missing/corrupt scaler gracefully
+            try:
+                self.preprocessor.load_scaler()
+            except Exception:
+                logger.exception("Failed to load scaler; scaler will be refit on next training.")
+        except Exception:
+            logger.exception("Unexpected error while loading models; continuing without a loaded model.")
+            # ensure we don't crash the app at startup
             return
-
-        with open(model_path, "rb") as f:
-            self.model = pickle.load(f)
-
-        # ensure scaler is loaded
-        self.preprocessor.load_scaler()
 
     def predict_anomaly(self, features: Union[np.ndarray, List[float]]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Accepts a single sample (1D array/list) or batch (2D numpy array).
@@ -89,6 +116,9 @@ class AnomalyDetector:
         """
         if self.model is None or self.preprocessor is None:
             self.load_models()
+
+        if self.model is None:
+            raise RuntimeError("Model is not available. Trigger training via /train or enable MODEL_WARMUP for auto-training on startup")
 
         # Normalize input to array
         arr = np.asarray(features)
